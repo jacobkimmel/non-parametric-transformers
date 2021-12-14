@@ -1,3 +1,15 @@
+# JCK Notes
+
+## Tabular data formatting
+
+Datasets are each given a custom class that handles preprocessing in `npt/datasets/`. 
+These classes handle assignment of target columns (e.g. targets for prediction) and feature columns and generate a random mask to hide feature values.
+Datasets all store raw values in `.data_table` attribute and have a `make_missing(p: float=proportion_to_mask)` function to return an `np.ndarray` mask of the data values.
+Dataset classes also store two lists, `.num_target_cols, .cat_target_cols`, each containing integer indices denoting the location of numeric and categorical target columns in `.data_table`.
+There are analagous lists `.cat_features, .num_features`. Each of these is hard coded in the dataset class.
+
+
+
 # Self-Attention Between Datapoints: Going Beyond Individual Input-Output Pairs in Deep Learning
 
   **[Overview](#overview)**

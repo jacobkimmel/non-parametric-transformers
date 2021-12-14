@@ -452,7 +452,8 @@ class ColumnEncodingDataset:
         # For all other cases (e.g. many numerical, many categoricals/
         # numericals, single numerical) use standard KFold
         should_stratify = (
-            len(cat_target_cols) == 1 and len(num_target_cols) == 0)
+            len(cat_target_cols) == 1 and len(num_target_cols) == 0
+        )
 
         if c.debug_no_stratify:
             should_stratify = False

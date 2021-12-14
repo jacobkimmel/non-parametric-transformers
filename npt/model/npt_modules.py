@@ -8,6 +8,8 @@ import torch.nn as nn
 
 class SaveAttMaps(nn.Module):
     def __init__(self):
+        """Dummy class that takes attention maps and data as input, then saves them
+        as parameters of an `nn.Module`"""
         super().__init__()
         self.curr_att_maps = None
         self.Q = None
@@ -32,9 +34,24 @@ class MAB(nn.Module):
     (Lee et al. 2019, https://github.com/juho-lee/set_transformer).
     """
     def __init__(
-            self, dim_Q, dim_KV, dim_emb, dim_out, c):
+            self, dim_Q, dim_KV, dim_emb, dim_out, c,
+    ) -> None:
         """
+        Parameters
+        ----------
+        dim_Q : int
+            dimensionality of queries
+        dim_KV : int
+            shared dimensionality of keys and values.
+        dim_emb : int
+            dimensionality of the embedding.
+        dim_out : int
+            dimensionality of the output.
+        c: wandb config
+            weights and biases database config object.
 
+        Notes
+        -----
         Inputs have shape (B_A, N_A, F_A), where
         * `B_A` is a batch dimension, along we parallelise computation,
         * `N_A` is the number of samples in each batch, along which we perform
@@ -122,21 +139,37 @@ class MAB(nn.Module):
         self.rff = nn.Sequential(*self.rff)
 
     def forward(self, X, Y):
+        """
+        Parameters
+        ----------
+        X : torch.Tensor
+            [N, dim_Q] input matrix to be transformed into queries.
+        Y : torch.Tensor
+            [M, dim_KV] input matrix to be transformed into keys and values.
+        
+        Returns
+        -------
+        H : torch.Tensor
+            [X.size(0), dim_out] learned representation.
+        """
         if self.pre_layer_norm and self.ln0 is not None:
-            X_multihead = self.ln0(X)
+            X_multihead = self.ln0(X) # [N, dim_Q], just normed
         else:
             X_multihead = X
 
-        Q = self.fc_q(X_multihead)
+        Q = self.fc_q(X_multihead) # [N, dim_emb]
 
         if self.fc_res is None:
             X_res = Q
         else:
-            X_res = self.fc_res(X)  # Separate embedding for residual
+            X_res = self.fc_res(X)  # Separate embedding for residual, [N, dim_out]
 
-        K = self.fc_k(Y)
-        V = self.fc_v(Y)
+        K = self.fc_k(Y) # [M, dim_emb]
+        V = self.fc_v(Y) # [M, dim_emb]
 
+        # split features for use across heads
+        # dim_split = dim_emb // n_heads
+        # split: [N/M, dim_emb] -> ([N, dim_split])
         Q_ = torch.cat(Q.split(self.dim_split, 2), 0)
         K_ = torch.cat(K.split(self.dim_split, 2), 0)
         V_ = torch.cat(V.split(self.dim_split, 2), 0)
@@ -144,8 +177,10 @@ class MAB(nn.Module):
         # TODO: track issue at
         # https://github.com/juho-lee/set_transformer/issues/8
         # A = torch.softmax(Q_.bmm(K_.transpose(1,2))/math.sqrt(self.dim_V), 2)
+        # compute the raw attention similarities between queries and keys
         A = torch.einsum('ijl,ikl->ijk', Q_, K_)
 
+        # normalize the attention scores
         if self.att_score_norm == 'softmax':
             A = torch.softmax(A / math.sqrt(self.dim_KV), 2)
         elif self.att_score_norm == 'constant':
@@ -153,6 +188,7 @@ class MAB(nn.Module):
         else:
             raise NotImplementedError
 
+        # save attention maps for visualization in tensorboard or w&b
         if self.viz_att_maps:
             A = self.save_att_maps(A, Q_, K_, V_)
 
@@ -223,6 +259,12 @@ class MHSA(nn.Module):
     """
     Multi-head Self-Attention Block.
 
+
+    Notes
+    -----
+    Simple wrapper around the multi-head attention block to pass
+    the input as both the queries and key/value set.
+    
     Based on implementation from Set Transformer (Lee et al. 2019,
     https://github.com/juho-lee/set_transformer).
     Alterations detailed in MAB method.

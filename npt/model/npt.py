@@ -55,6 +55,7 @@ class NPTModel(nn.Module):
 
         Args:
             c: wandb config
+                weights and biases database config object.
             metadata: Dict, from which we retrieve:
                 input_feature_dims: List[int], used to specify the number of
                     one-hot encoded dimensions for each feature in the table

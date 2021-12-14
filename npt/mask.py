@@ -26,6 +26,7 @@ def apply_mask(
             the masking token and (b) either zero-out or randomise the value
             of the entry. We zero-out with p=c.model_bert_mask_percentage
             and randomise with p=1-c.model_bert_mask_percentage.
+        c : wandb config object.
 
     Returns:
         data_arrs: Now with masked entries.

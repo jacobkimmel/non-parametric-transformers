@@ -97,7 +97,10 @@ class ProteinDataset(BaseDataset):
 
         # draw random indices at which to set True do
         idxs = np.random.choice(
-            a=range(0, N * D_miss), size=int(p * N * D_miss), replace=False)
+            a=range(0, N * D_miss), 
+            size=int(p * N * D_miss), 
+            replace=False,
+        )
 
         # set missing to true at these indices
         missing[idxs] = True
@@ -110,6 +113,8 @@ class ProteinDataset(BaseDataset):
         # add back target columns
         missing_complete = missing
 
+        # walk through the columns and insert unmasked target columns at the appropriate
+        # locations
         for col in target_cols:
             missing_complete = np.concatenate(
                 [missing_complete[:, :col],
