@@ -101,4 +101,5 @@ def get_class_reg_train_val_test_splits(
 
 
 def get_n_cv_splits(c):
+    """Compute the number of cross-validation splits based on the test data fraction"""
     return int(1 / c.exp_test_perc)  # Rounds down

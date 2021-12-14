@@ -122,6 +122,8 @@ def run_cv(args, wandb_args):
 
 def run_cv_splits(wandb_args, args, c, wandb_run):
 
+    # loads dataset specified in the configuration from the dataset object,
+    # generates train/test/val splits and sets up a data_dict generator `dataset_gen`
     dataset = ColumnEncodingDataset(c)
 
     #######################################################################
@@ -168,7 +170,7 @@ def run_cv_splits(wandb_args, args, c, wandb_run):
 
         #######################################################################
         # Load New CV Split
-        dataset.load_next_cv_split()
+        dataset.load_next_cv_split() # this is just next(dataset.dataset_gen) :)
 
         if c.viz_att_maps:
             print('Attempting to visualize attention maps.')
@@ -181,8 +183,10 @@ def run_cv_splits(wandb_args, args, c, wandb_run):
 
         #######################################################################
         # Initialise Model
+        # actually ignores the `dataset`, called `init_model_opt_scaler`
         model, optimizer, scaler = init_model_opt_scaler_from_dataset(
-            dataset=dataset, c=c, device=c.exp_device)
+            dataset=dataset, c=c, device=c.exp_device
+        )
 
         # if not c.exp_azure_sweep:
         #     wandb.watch(model, log="all", log_freq=10)

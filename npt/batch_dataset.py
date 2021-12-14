@@ -36,7 +36,27 @@ BATCHING_SETTINGS_MAP = {
 
 class NPTBatchDataset(torch.utils.data.IterableDataset):
     def __init__(
-            self, data_dict, c, curr_cv_split, metadata, device, sigmas):
+            self, data_dict, c, curr_cv_split, metadata, device, sigmas,
+    ):
+        """Iterable dataset for NPT batches
+        
+        Parameters
+        ----------
+        data_dict : dict
+            mask_matrix_name - torch.BoolTensor for every mask type entered in 
+            `column_encoding_dataset.TORCH_MASK_MATRICES`.
+            data_arrs - list of torch.Tensor for each column in `data_table`
+            new_train_val_test_indices - np.ndarray of indices
+        c : wandb config
+        curr_cv_split : int
+            current cv split number
+        metadata : dict
+            common metadata across CV splits.
+        device : torch.device
+        sigmas : np.ndarray 
+            standard deviations of each column prior to standardizing them.
+            we keep track of these to un-standardize later.
+        """
         self.c = c
         self.curr_cv_split = curr_cv_split
         self.metadata = metadata
@@ -72,11 +92,13 @@ class NPTBatchDataset(torch.utils.data.IterableDataset):
             dataset_mode: self.get_batch_indices(dataset_mode=dataset_mode)
             for dataset_mode in self.valid_modes}
 
+        # Map `dataset_mode: n_rows` that will be sampled for each type of batch
         self.dataset_mode_to_dataset_len = {
             dataset_mode: self.dataset_mode_to_batch_settings[dataset_mode][0]
             for dataset_mode in self.valid_modes}
 
         # Number of batches is dependent on dataset mode
+        # this is a simple count of `self.dataset_model_to_dataset_len/self.batch_size`
         self.mode_to_n_batches = {
             dataset_mode: self.get_mode_n_batches(dataset_mode=dataset_mode)
             for dataset_mode in self.valid_modes}
@@ -208,6 +230,7 @@ class NPTBatchDataset(torch.utils.data.IterableDataset):
         self.data_dict['data_arrs'] = data_arrs
 
     def get_mode_n_batches(self, dataset_mode):
+        """Get the number of batchs for each `dataset_mode` in {train, val, test}"""
         n_batches = int(np.ceil(
             self.dataset_mode_to_dataset_len[dataset_mode] /
             self.c.exp_batch_size))
@@ -245,6 +268,7 @@ class NPTBatchDataset(torch.utils.data.IterableDataset):
         """
         Batch indices are determined by the dataset_mode and whether or not
         we are doing SSL.
+
         :return: Tuple[n_rows, batch_modes, mode_indices, stratified_sampler]
             n_rows: int, the number of rows used in this mode setting. e.g. for
                 SSL, will be all of the rows available.

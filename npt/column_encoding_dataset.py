@@ -146,6 +146,9 @@ class ColumnEncodingDataset:
     """Preprocessing: Pathing"""
 
     def init_cache_path_and_splits(self):
+        """Setup paths for caching and model checkpoints"""
+        # `get_n_cv_splits` just computed how many splits to do based on the 
+        # `c.exp_test_perc` percentage of test data parameter
         n_cv_splits = get_n_cv_splits(self.c)
         ssl_str = f'ssl__{self.c.model_is_semi_supervised}'
         cache_path = os.path.join(
@@ -174,6 +177,8 @@ class ColumnEncodingDataset:
         return cache_path, model_cache_path, n_cv_splits
 
     def are_datasets_cached(self):
+        """Check if the datasets are pre-cached and ready to use by globbing the
+        cache paths and checking against expected dataset filenames"""
         if self.c.data_force_reload:
             # TODO: should rename to data_force_rebuild probably
             print('Forcing data rebuild and recache.')
@@ -200,10 +205,13 @@ class ColumnEncodingDataset:
     """Preprocessing: Load and Cache"""
 
     def load_metadata(self):
+        """Load metadata from a JSON file."""
         with open(self.metadata_path, 'r') as f:
             return json.load(f)
 
     def cache_metadata(self, data_dict):
+        """Save metadata to a JSON file, keeping only fields that are common across
+        cross-val splits"""
         # Fields which are generic for each CV split
         metadata_dict = {
             key: data_dict[key]
@@ -218,6 +226,7 @@ class ColumnEncodingDataset:
             for key in METADATA_FIELDS}
 
     def load_datasets(self):
+        """Load datasets from pickle objects cached on disk."""
         for cv_split in range(min(self.n_cv_splits, self.c.exp_n_runs)):
             dataset_path = os.path.join(
                 self.cache_path, f"dataset__split={cv_split}.pkl")
@@ -238,6 +247,28 @@ class ColumnEncodingDataset:
                 yield data_dict
 
     def load_torch_dataset(self, data_dict):
+        """Load data from a dictionary into torch.Tensor
+
+        Parameters
+        ----------
+        data_dict : dict
+            mask_matrix_name - np.ndarray for each entry in `TORCH_MASK_MATRICES`.
+            data_table - np.ndarray of the input data.
+            new_train_val_test_indices - np.ndarray train/test/val indices
+            sigmas - np.ndarray standard deviations of each column prior to 
+            standardizing them. we keep track of these to un-standardize later.
+        
+        Returns
+        -------
+        NPTBatchDataset
+            builds off of `mask_torch_data` dictionary.
+        
+        Notes
+        -----
+        1. Converts the mask matrix to a torch.BoolTensor
+        2. Appends each column to a list `data_arrs` as a separate `torch.Tensor`.
+        This forms a "ragged" data set that we later embed to a common number of dims.
+        """
         mask_torch_data = {}
 
         # Convert all mask and data matrices to torch,
@@ -277,6 +308,7 @@ class ColumnEncodingDataset:
             sigmas=data_dict['sigmas'])
 
     def cache_dataset(self, data_dict):
+        """Save a pre-prepared data_dict to a pickle file."""
         dataset_path = os.path.join(
             self.cache_path, f"dataset__split={data_dict['split_idx']}.pkl")
 
@@ -301,6 +333,7 @@ class ColumnEncodingDataset:
     """Preprocessing: Data Generation Helper Functions"""
 
     def get_data_dict(self):
+        """Generate a data dictionary from the `_dataset` attribute."""
         # Get Data
         data_dict = self._dataset.get_data_dict(
             force_disable_auroc=self.c.data_set in IMAGE_DATASETS)
@@ -391,10 +424,16 @@ class ColumnEncodingDataset:
                       'n_cv_splits set to 1.')
                 self.n_cv_splits = 1
 
+            # set the dataset generator object for classification/regression
+            # yields a `data_dict` for each of the CV splits specified
             self.dataset_gen = (
-                self.generate_classification_regression_dataset(data_dict))
+                self.generate_classification_regression_dataset(data_dict)
+            )
 
             for split_idx, data_dict in enumerate(self.dataset_gen):
+                # `encode_data_dict` applies column-wise "encoding" to the data in the
+                # dictionary. categorical variables are either one-hot or int encoded,
+                # and numerical variables are standardized [mu=0, sig=1].
                 encoded_data = encode_data_dict(
                      data_dict=data_dict, c=self.c)
                 if tabnet_mode:
@@ -431,7 +470,15 @@ class ColumnEncodingDataset:
 
     def generate_classification_regression_dataset(self, data_dict):
         """
-        TODO: docstring
+        Set up datasets with train_test_val splits using a generator.
+        Yields a `data_dict` for each data-split, reordering the rows so that 
+        train/val/test each follow each other directly, and reorders the masking
+        matrices to match the train/test/val label of each row.
+
+        Notes
+        -----
+        data splits are stratified if we have only one categorical target column,
+        otherwise they're simply randomized.
         """
         c = self.c
         data_table = data_dict['data_table']
@@ -472,7 +519,8 @@ class ColumnEncodingDataset:
             train_val_test_splits = get_class_reg_train_val_test_splits(
                 target_col_arr, c,
                 should_stratify=should_stratify,
-                fixed_test_set_index=fixed_test_set_index)
+                fixed_test_set_index=fixed_test_set_index
+            )
 
         for split_idx, (train_val_test_indices) in enumerate(
                 train_val_test_splits):

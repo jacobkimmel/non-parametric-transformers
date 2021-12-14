@@ -119,12 +119,16 @@ def encode_data(
                 # Use TabNet's label encoding
                 # https://github.com/dreamquark-ai/tabnet/blob/develop/
                 # forest_example.ipynb
+                # `LabelEncoder` is standard from `sklearn`
+                # it just maps class labels onto [0, n_classes-1], regardless of the
+                # input type (ints above [0, K-1], strs, etc.)
                 l_enc = LabelEncoder()
                 encoded_col = np.expand_dims(
                     l_enc.fit_transform(non_missing_col), -1)
                 num_classes = len(l_enc.classes_)
                 cat_col_dims.append(num_classes)
             else:
+                # encode to a one-hot, dense np.ndarray
                 fitted_encoder = OneHotEncoder(sparse=False).fit(
                     non_missing_col)
                 encoded_col = fitted_encoder.transform(
@@ -134,6 +138,9 @@ def encode_data(
             sigmas.append(-1)
 
         elif col_index in num_features:
+            # standard scale all other features by fitting the transform to a subset
+            # of the input data we extracted in `stat_col`
+            # this prevents information leakage from e.g. the test set
             fitted_encoder = StandardScaler().fit(stat_col)
             encoded_col = fitted_encoder.transform(non_missing_col)
             standardisation[col_index, 0] = fitted_encoder.mean_[0]
@@ -186,7 +193,8 @@ def encode_data_dict(data_dict, c):
     # * TODO: need to vectorize for huge datasets
     # * TODO: (i.e. can't fit in CPU memory)
     compute_statistics_matrix, non_missing_matrix, missing_matrix = (
-        get_compute_statistics_and_non_missing_matrix(data_dict, c))
+        get_compute_statistics_and_non_missing_matrix(data_dict, c)
+    )
 
     data_dtype = get_numpy_dtype(dtype_name=c.data_dtype)
 
