@@ -7,13 +7,13 @@ def filter_col(col, df):
     return list(filter(lambda x: col in x, df.columns))
 
 
-def get_df_from_project(project):
+def get_df_from_project(project, path: str="wandb"):
     """Load summary and config DataFrame for all runs of a project.
 
     Largely copied from wandb docs.
     """
     api = wandb.Api()
-    runs = api.runs(f'anonymous_tab/{project}')
+    runs = api.runs(f'{path}/{project}')
 
     summary_list = []
     config_list = []

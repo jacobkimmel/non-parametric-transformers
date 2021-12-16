@@ -1,3 +1,5 @@
+import logging
+
 import wandb
 from torch.cuda.amp import GradScaler
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -5,6 +7,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from npt.model.npt import NPTModel
 from npt.utils.encode_utils import get_torch_dtype
 from npt.utils.train_utils import count_parameters, init_optimizer
+
+logger = logging.getLogger(__name__)
 
 
 def init_model_opt_scaler_from_dataset(dataset, c, device=None):
@@ -15,11 +19,12 @@ def init_model_opt_scaler_from_dataset(dataset, c, device=None):
 def init_model_opt_scaler(c, metadata, device=None):
     if device is None:
         device = c.exp_device
-
+    logger.info("Initializing NPT model.")
     model = NPTModel(
         c, metadata=metadata, device=device)
 
     model_torch_dtype = get_torch_dtype(dtype_name=c.model_dtype)
+    logger.info(f"Transferring NPT model to {device}")
     model = model.to(device=device).type(model_torch_dtype)
     print(f'Model has {count_parameters(model)} parameters,'
           f'batch size {c.exp_batch_size}.')

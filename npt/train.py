@@ -25,6 +25,13 @@ class Trainer:
             dataset: ColumnEncodingDataset = None,
             torch_dataset: NPTDataset = None,
             distributed_args=None):
+        """
+        Notes
+        -----
+        Data is loaded from `.dataset.cv_dataset` attributes which are `NPTBatchDataset`
+        objects matching the current cross-val split. These are fed into `DataLoader`
+        objects with a custom aggregation function to avoid adding another batch dim. 
+        """
         self.model = model
         self.optimizer = optimizer
         self.scaler = scaler
@@ -439,8 +446,7 @@ class Trainer:
                     epoch, print_n, batch_index)
 
         # Perform batch GD?
-        batch_GD = (dataset_mode == 'train') and (
-            not self.c.exp_minibatch_sgd)
+        batch_GD = (dataset_mode == 'train') and (not self.c.exp_minibatch_sgd)
 
         if eval_model or batch_GD:
             # We want loss_dict either for logging purposes

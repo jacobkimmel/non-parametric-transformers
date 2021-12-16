@@ -277,3 +277,7 @@ class MHSA(nn.Module):
 
     def forward(self, X):
         return self.mab(X, X)
+
+
+# TODO: Consider implementing a Performer style multihead attention block to allow
+# for long sequences to be considered.

@@ -1,6 +1,7 @@
 import json
 import os
 import pickle
+import logging
 
 import numpy as np
 import torch
@@ -22,12 +23,17 @@ from npt.datasets.mnist import MNISTDataset
 from npt.datasets.poker_hand import PokerHandDataset
 from npt.datasets.protein import ProteinDataset
 from npt.datasets.yacht import YachtDataset
+from npt.datasets.cell import TMCell
 from npt.utils.cv_utils import (
     get_class_reg_train_val_test_splits, get_n_cv_splits)
 from npt.utils.encode_utils import encode_data_dict
 from npt.utils.memory_utils import get_size
 from npt.utils.preprocess_utils import (
     get_matrix_from_rows)
+
+
+logger = logging.getLogger(__name__)
+
 
 DATASET_NAME_TO_DATASET_MAP = {
     'breast-cancer': BreastCancerClassificationDataset,
@@ -43,7 +49,8 @@ DATASET_NAME_TO_DATASET_MAP = {
     'breast-cancer-debug': BreastCancerDebugClassificationDataset,
     'debug': DebugDataset,
     'cifar10': CIFAR10Dataset,
-    'kick': KickDataset
+    'kick': KickDataset,
+    'tabula-muris': TMCell,
 }
 
 # Preprocessed separately for data augmentation
@@ -67,6 +74,40 @@ class ColumnEncodingDataset:
 
     Tuple of (row_independent_inference, mode) jointly determines
     batching strategy for NPT model.
+
+    Attributes
+    ----------
+    ._dataset : BaseDataset subclass object
+        has `.get_data_dict()` method.
+    `.cv_dataset` : NPTBatchDataset
+        object for the current cross-val split, updated by `.load_next_cv_split` method.
+
+    Notes
+    -----
+    Order of operations:
+    (1) `BaseDataset` subclass is retrieved by value-lookup from `c.data_set` key
+    (2) Paths for data caching and model checkpoints are initialized
+    (3) CV split settings are reset, triggering `run_preprocessing_and_caching`
+    (4) `run_preprocessing_and_caching` triggets `get_data_dict` and `update_data_arrs`,
+    which check if `data_dict["fixed_test_set_index"]|data_dict["fixed_split_indices"]`
+    exist and set `n_cv_splits=1` if so.
+    `get_data_dict` itself just calls `._dataset.get_data_dict()` and does some checks.
+    (5) Triggered by `run_pre...`; `.generate_classification_regression_dataset`
+    builds a `dataset_gen` generator that yields `data_dict` objects for each cv split.
+    (6) `run_pre...` closes by running `encode_data_dict` on each CV split, this casts
+    categorical data to int indices and stadard scales numerical features.
+    After encoding `data_dict["data_table"]` is a ragged `List[np.ndarray]` of encoded
+    features, **not** an actual np.ndarray / pd.DataFrame table.
+    Encoded data dictionaries are saved as `.pkl` with `cache_dataset`.
+    `run_pre...` returns a generator `load_datasets()`.
+    (7) When `load_datasets()` yields, it returns `.load_torch_dataset(data_dict)` for
+    each cv-split.
+    (8) `.load_torch_dataset()` moves mask matrices to model device and casts data 
+    columns to `torch.Tensor` one at a time, storing them in a list `data_dict["data_arrs"]`
+    where each entry is a column.
+
+    TODO: This procedure currently requires that `data_dict["data_table"]` fit in
+    CPU memory. Engineering is required to enable minibatch dataloading.
     """
     def __init__(self, c, device=None):
         super(ColumnEncodingDataset).__init__()
@@ -107,7 +148,7 @@ class ColumnEncodingDataset:
         if self.curr_cv_split > self.n_cv_splits:
             raise Exception(
                 'Have loaded too many datasets for our n_cv_splits.')
-
+        # triggers a `yield` from `load_datasets`, e.g. `load_torch_dataset`
         self.cv_dataset = next(self.dataset_gen)
 
     """Model and Mode Settings"""
@@ -282,13 +323,17 @@ class ColumnEncodingDataset:
             data_table_args['device'] = self.device
 
         # Convert mask matrices
+        logger.info("Casting mask_matrix to torch.Tensor")
         for mask_matrix_name in TORCH_MASK_MATRICES:
             mask_torch_data[mask_matrix_name] = torch.tensor(
                 data_dict[mask_matrix_name], **mask_matrix_args)
 
         # Convert data table
+        # NOTE: `data_dict["data_table"]` is actually List[np.ndarray] where each elem
+        # is a single encoded column. the relevant transformation happens in
+        # `encode_data_dict -> encode_data`
         data_arrs = []
-
+        logger.info("casting ragged data_table to torch.Tensor")
         for col in data_dict['data_table']:
             data_arrs.append(torch.tensor(col, **data_table_args))
 
@@ -407,13 +452,15 @@ class ColumnEncodingDataset:
 
         # Skip dataset generation and caching if files are available
         if not self.are_datasets_cached():
-            # Load data dict information
+            # Load data dict information through `._dataset.get_data_dict()`
             data_dict = self.get_data_dict()
 
-            # Set n_cv_split attr
+            # Set n_cv_split attr by checking for `data_dict["fixed_test_set_index"]`
+            # sets to =1 if there is a fixed test set
             self.update_data_attrs(data=data_dict)
 
             # Override number of CV splits if dataset has a fixed test set
+            # TODO JCK this is redundant with the above call to `update_data_attrs`?
             if data_dict['fixed_test_set_index'] is not None:
                 print('Fixed test set provided. n_cv_splits set to 1.')
                 self.n_cv_splits = 1
@@ -434,6 +481,9 @@ class ColumnEncodingDataset:
                 # `encode_data_dict` applies column-wise "encoding" to the data in the
                 # dictionary. categorical variables are either one-hot or int encoded,
                 # and numerical variables are standardized [mu=0, sig=1].
+                # NOTE: `encoded_data` is a `tuple`
+                # (encoded_dataset, input_feature_dims, standardisation, sigmas)
+                # where `encoded_dataset: List[np.ndarray]` of feature columns
                 encoded_data = encode_data_dict(
                      data_dict=data_dict, c=self.c)
                 if tabnet_mode:

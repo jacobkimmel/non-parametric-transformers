@@ -2,6 +2,7 @@
 import os
 import pathlib
 import sys
+import logging
 
 import numpy as np
 import torch
@@ -70,7 +71,7 @@ def setup_args(args):
     if (args.model_class == 'sklearn-baselines' and
         args.sklearn_model == 'TabNet' and not args.data_force_reload):
         raise ValueError('For TabNet, user must specify data_force_reload '
-                         'to encode data in a TabNet-compatible manner.')
+                         'to encode data in a   TabNet-compatible manner.')
 
     pathlib.Path(args.wandb_dir).mkdir(parents=True, exist_ok=True)
 
@@ -107,6 +108,10 @@ def run_cv(args, wandb_args):
     if args.mp_distributed:
         wandb_run = None
         c = args
+    # elif args.no_wandb:
+    #     # deactivate wandb, but don't distribute jobs
+    #     wandb_run = None
+    #     c = args        
     else:
         wandb_run = wandb.init(**wandb_args)
         args.cv_index = 0
@@ -170,7 +175,8 @@ def run_cv_splits(wandb_args, args, c, wandb_run):
 
         #######################################################################
         # Load New CV Split
-        dataset.load_next_cv_split() # this is just next(dataset.dataset_gen) :)
+        print("loading dataset CV split.")
+        dataset.load_next_cv_split() # this is just next(dataset.dataset_gen)
 
         if c.viz_att_maps:
             print('Attempting to visualize attention maps.')
@@ -184,6 +190,7 @@ def run_cv_splits(wandb_args, args, c, wandb_run):
         #######################################################################
         # Initialise Model
         # actually ignores the `dataset`, called `init_model_opt_scaler`
+        print("initializing model")
         model, optimizer, scaler = init_model_opt_scaler_from_dataset(
             dataset=dataset, c=c, device=c.exp_device
         )
@@ -193,6 +200,7 @@ def run_cv_splits(wandb_args, args, c, wandb_run):
 
         #######################################################################
         # Run training
+        print("initializing trainer")
         trainer = Trainer(
             model=model, optimizer=optimizer, scaler=scaler,
             c=c, wandb_run=wandb_run, cv_index=cv_index, dataset=dataset)
@@ -202,6 +210,8 @@ def run_cv_splits(wandb_args, args, c, wandb_run):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    logging.info("Set logging level to INFO")
     parser = build_parser()
     args = parser.parse_args()
 

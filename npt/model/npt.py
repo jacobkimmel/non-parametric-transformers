@@ -55,7 +55,8 @@ class NPTModel(nn.Module):
 
         Args:
             c: wandb config
-                weights and biases database config object.
+                weights and biases database config object or similar object with 
+                config options as attributes.
             metadata: Dict, from which we retrieve:
                 input_feature_dims: List[int], used to specify the number of
                     one-hot encoded dimensions for each feature in the table
@@ -71,6 +72,10 @@ class NPTModel(nn.Module):
                     columns, used if there is a special embedding dimension
                     for target cols.
             device: Optional[int].
+
+        Notes
+        -----
+        JCK - Single cell datasets are too high dimensional to operate 
         """
         super().__init__()
 
@@ -131,6 +136,9 @@ class NPTModel(nn.Module):
         # (i.e., a table with N rows and D columns has N x D elements)
         # to the hidden_dim. Similarly, in the output, we will "de-embed"
         # from this hidden_dim.
+
+        # JCK
+        # For some datasets like single cell RNA-seq, we need to reduce
 
         # Build encoder
         self.enc = self.get_npt()

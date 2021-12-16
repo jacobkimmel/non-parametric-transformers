@@ -1,10 +1,13 @@
 from collections import defaultdict
+import logging
 
 import torch
 import torch.nn as nn
 from pytorch_lightning.metrics.functional import auroc as lightning_auroc
 
 from npt.utils.encode_utils import torch_cast_to_dtype
+
+logger = logging.getLogger(__name__)
 
 
 class Loss:

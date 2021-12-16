@@ -18,11 +18,13 @@ class EarlyStopSignal(Enum):
 class EarlyStopCounter:
     def __init__(self, c, data_cache_prefix, metadata, wandb_run, cv_index,
                  n_splits, device=None):
-        """
+        """Check for decreasing validation loss and perform early stopping if desired.
+
         :param c: config
         :param data_cache_prefix: str; cache path for the dataset. Used for
             model checkpoints
         :param metadata: Dict, used for model initialization
+        :param n_splits: int; number of cross-validation splits.
         :param device: str; set in the distributed setting, otherwise uses
             config option c.exp_device.
         """
